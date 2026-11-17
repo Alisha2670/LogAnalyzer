@@ -3,8 +3,8 @@
 
 #include "parser.h"
 
-void filter_by_level(const LogEntry entries[], int count, const char *level);
-void filter_by_date(const LogEntry entries[], int count, const char *date);
-void search_by_keyword(const LogEntry entries[], int count, const char *keyword);
+// Filters logs by level, date, and/or keyword in a single pass. Pass NULL to skip a filter.
+void filter_entries(const LogEntry entries[], int count,
+                    const char *level, const char *date, const char *keyword);
 
 #endif

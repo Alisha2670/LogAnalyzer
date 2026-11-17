@@ -1,5 +1,6 @@
 # Compiled binaries and object files
 clog
+*.exe
 *.o
 *.out
 

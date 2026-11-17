@@ -3,6 +3,7 @@
 #include "report.h"
 #include "analyzer.h"
 
+// Formats full diagnostic summary and error rankings to any output stream
 static void write_report_content(FILE *stream, const char *filepath, int total_lines,
                                 const LogEntry entries[], int valid_count,
                                 const int invalid_lines[], int invalid_count) {
@@ -12,7 +13,7 @@ static void write_report_content(FILE *stream, const char *filepath, int total_l
     fprintf(stream, "============================================================\n");
     fprintf(stream, "              C-LOG SYSTEM DIAGNOSTIC REPORT                \n");
     fprintf(stream, "============================================================\n");
-    fprintf(stream, "Analyzed File   : %s\n", filepath);
+    fprintf(stream, "Analyzed Source : %s\n", filepath);
     fprintf(stream, "Total Lines     : %d\n", total_lines);
 
     fprintf(stream, "\n------------------------------------------------------------\n");
@@ -23,8 +24,12 @@ static void write_report_content(FILE *stream, const char *filepath, int total_l
 
     if (invalid_count > 0) {
         fprintf(stream, "\n* Corrupted Line Numbers:\n");
-        for (int i = 0; i < invalid_count; i++) {
+        int display_limit = (invalid_count < MAX_INVALID_ENTRIES) ? invalid_count : MAX_INVALID_ENTRIES;
+        for (int i = 0; i < display_limit; i++) {
             fprintf(stream, "  - Line %d\n", invalid_lines[i]);
+        }
+        if (invalid_count > MAX_INVALID_ENTRIES) {
+            fprintf(stream, "  - ... and %d more corrupted line(s)\n", invalid_count - MAX_INVALID_ENTRIES);
         }
     }
 
@@ -46,26 +51,8 @@ static void write_report_content(FILE *stream, const char *filepath, int total_l
     fprintf(stream, "------------------------------------------------------------\n");
 
     ErrorFrequency freqs[MAX_UNIQUE_ERRORS];
-    int unique_count = 0;
-    for (int i = 0; i < valid_count; i++) {
-        if (strcmp(entries[i].level, "ERROR") == 0) {
-            int found = -1;
-            for (int j = 0; j < unique_count; j++) {
-                if (strcmp(freqs[j].message, entries[i].message) == 0) {
-                    found = j;
-                    break;
-                }
-            }
-            if (found != -1) {
-                freqs[found].count++;
-            } else if (unique_count < MAX_UNIQUE_ERRORS) {
-                strncpy(freqs[unique_count].message, entries[i].message, MAX_MSG_LEN - 1);
-                freqs[unique_count].message[MAX_MSG_LEN - 1] = '\0';
-                freqs[unique_count].count = 1;
-                unique_count++;
-            }
-        }
-    }
+    int overflow = 0;
+    int unique_count = count_recurring_errors(entries, valid_count, freqs, MAX_UNIQUE_ERRORS, &overflow);
 
     if (unique_count == 0) {
         fprintf(stream, "No errors detected.\n");
@@ -75,8 +62,14 @@ static void write_report_content(FILE *stream, const char *filepath, int total_l
         for (int i = 0; i < unique_count; i++) {
             fprintf(stream, "     %-7d | %s\n", freqs[i].count, freqs[i].message);
         }
+        if (overflow > 0) {
+            fprintf(stream, "-------------+----------------------------------------------\n");
+            fprintf(stream, "Note: Showing top %d unique errors (%d additional unique message(s) omitted).\n",
+                    MAX_UNIQUE_ERRORS, overflow);
+        }
     }
 
+    // Determine system health based on error rate thresholds
     fprintf(stream, "\n------------------------------------------------------------\n");
     fprintf(stream, "4. SYSTEM HEALTH VERDICT\n");
     fprintf(stream, "------------------------------------------------------------\n");
@@ -93,21 +86,23 @@ static void write_report_content(FILE *stream, const char *filepath, int total_l
     fprintf(stream, "============================================================\n");
 }
 
+// Prints report to stdout, and exports to disk if export_filepath is non-NULL
 void generate_report(const char *filepath, int total_lines,
                      const LogEntry entries[], int valid_count,
                      const int invalid_lines[], int invalid_count,
-                     int export_to_file) {
+                     const char *export_filepath) {
     
     write_report_content(stdout, filepath, total_lines, entries, valid_count, invalid_lines, invalid_count);
 
-    if (export_to_file) {
-        FILE *file = fopen("reports/report.txt", "w");
+    if (export_filepath != NULL) {
+        FILE *file = fopen(export_filepath, "w");
         if (file == NULL) {
-            perror("Failed to export report to reports/report.txt");
+            fprintf(stderr, "\n[ERROR] Failed to export report to '%s': ", export_filepath);
+            perror("");
             return;
         }
         write_report_content(file, filepath, total_lines, entries, valid_count, invalid_lines, invalid_count);
         fclose(file);
-        printf("\n[SUCCESS] Diagnostic report exported to: reports/report.txt\n");
+        printf("\n[SUCCESS] Diagnostic report exported to: %s\n", export_filepath);
     }
 }
